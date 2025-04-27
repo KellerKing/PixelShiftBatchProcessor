@@ -1,6 +1,4 @@
-﻿using PixelShiftBatchProcessor.ARW.Dto;
-
-namespace PixelShiftBatchProcessor
+﻿namespace PixelShiftBatchProcessor
 {
     internal interface IHeaderVerarbeiter
     {

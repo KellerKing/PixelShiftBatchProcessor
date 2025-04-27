@@ -14,6 +14,10 @@ namespace PixelShiftBatchProcessor
         { //https://dpb587.me/entries/tiff-ifd-and-subifd-20240226
             //https://files.dnb.de/nestor/kurzartikel/thema_06-TIFF.pdf
             //https://www.loc.gov/preservation/digital/formats/content/tiff_tags.shtml
+
+
+
+            //https://www.itu.int/itudoc/itu-t/com16/tiff-fx/docs/tiff6.pdf
             m_Fielpath = fielpath;
         }
 
@@ -45,17 +49,43 @@ namespace PixelShiftBatchProcessor
             for (var i = 0; i < anzahlIfd; i++)
             {
                 var ifdSpan = span.Slice((int)currentOffset, 12);
-                var ifd = m_IsLittleEndian ? new IFd()
+
+                var kennzeichnungsnummer = m_IsLittleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(0, 2)) : BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(0, 2));
+                var feldtyp = m_IsLittleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(2, 2)) : BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(2, 2));
+
+                var anzahlElemente = m_IsLittleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(ifdSpan.Slice(4, 4)) : BinaryPrimitives.ReadUInt32BigEndian(ifdSpan.Slice(4, 4));
+                var byteProElement = Helper.GetSpeicherbedarfInByte(feldtyp);
+                var byteFuerIfdContent = byteProElement * anzahlElemente;
+
+                var offset = 0u;
+                var sprungweite = 4;
+                if(byteFuerIfdContent > 4)
                 {
-                    Kennzeichnungsnummer = BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(0, 2)),
-                    Feldtyp = BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(2, 2)),
-                    Content = GetContent(ifdSpan.Slice(4, 4), BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(2, 2)), m_IsLittleEndian)
-                } :
-                new IFd()
+                    offset = m_IsLittleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(ifdSpan.Slice(8, 4)) : BinaryPrimitives.ReadUInt32BigEndian(ifdSpan.Slice(8, 4));
+                    sprungweite = byteProElement;
+                }
+
+                for (var j = 0; j < anzahlElemente; j++)
                 {
-                    Kennzeichnungsnummer = BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(0, 2))
-                };
-                testresult.Add(ifd);
+                    var content = GetContent(span.Slice((int)currentOffset + (int)offset, sprungweite), feldtyp, m_IsLittleEndian);
+
+                    var ifd = m_IsLittleEndian ? new IFd()
+                    {
+                        Kennzeichnungsnummer = kennzeichnungsnummer,
+                        Feldtyp = feldtyp,
+                        Content = content,
+                    } :
+                    new IFd()
+                    {
+                        Kennzeichnungsnummer = kennzeichnungsnummer,
+                        Feldtyp = feldtyp,
+                    };
+                    testresult.Add(ifd);
+
+                    if (byteFuerIfdContent > 4)
+                        offset += byteProElement;
+                }
+
                 currentOffset += 12;
             }
 
@@ -71,13 +101,16 @@ namespace PixelShiftBatchProcessor
 
             if (isLittleEndian)
             {
+
                 return feldtyp switch
                 {
                     1 => content[0],
                     2 => Encoding.ASCII.GetString(content),
                     3 => BinaryPrimitives.ReadUInt16LittleEndian(content),
                     4 => BinaryPrimitives.ReadUInt32LittleEndian(content),
-                    5 => BinaryPrimitives.ReadUInt32LittleEndian(content),
+                    5 => new Rational(
+                        BinaryPrimitives.ReadUInt32LittleEndian(content.Slice(0, 4)),
+                        BinaryPrimitives.ReadUInt32LittleEndian(content.Slice(4, 4))),
                     6 => content[0],
                     7 => content[0],
                     8 => content[0],
@@ -106,6 +139,25 @@ namespace PixelShiftBatchProcessor
 
     }
 
+    struct Rational
+    {
+        public Rational(uint zaehler, uint nenner)
+        {
+            Zaehler = zaehler;
+            Nenner = nenner;
+        }
+
+        public uint Zaehler { get; set; }
+        public uint Nenner { get; set; }
+
+        public double Wert => Nenner == 0 ? double.NaN : (double)Zaehler / Nenner;
+
+        public override readonly string ToString()
+        {
+            return $"{Zaehler}/{Nenner}";
+        }
+    }
+
     class IFd
     {
         public int Kennzeichnungsnummer { get; set; }
@@ -130,6 +182,27 @@ namespace PixelShiftBatchProcessor
                     255 => "SubfileType",
                     256 => "ImageWidth",
                     257 => "ImageLength",
+                    258 => "BitsPerSample",
+                    259 => "Compression",
+                    262 => "PhotometricInterpretation",
+                    263 => "Threshholding",
+                    264 => "CellWidth",
+                    265 => "CellLength",
+                    266 => "FillOrder",
+                    269 => "DocumentName",
+                    270 => "ImageDescription",
+                    271 => "Make",
+                    272 => "Model",
+                    273 => "StripOffsets",
+                    274 => "Orientation",
+                    277 => "SamplesPerPixel",
+                    278 => "RowsPerStrip",
+                    279 => "StripByteCounts",
+                    280 => "MinSampleValue",
+                    281 => "MaxSampleValue",
+                    282 => "XResolution",
+                    283 => "YResolution",
+                    284 => "PlanarConfiguration",
                     _ => string.Empty
                 };
             }
