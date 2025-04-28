@@ -54,10 +54,11 @@ namespace PixelShiftBatchProcessor
                 var feldtyp = m_IsLittleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(2, 2)) : BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(2, 2));
 
                 var anzahlElemente = m_IsLittleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(ifdSpan.Slice(4, 4)) : BinaryPrimitives.ReadUInt32BigEndian(ifdSpan.Slice(4, 4));
+
                 var byteProElement = Helper.GetSpeicherbedarfInByte(feldtyp);
                 var byteFuerIfdContent = byteProElement * anzahlElemente;
 
-                var offset = 0u;
+                var offset = currentOffset  + 8;
                 var sprungweite = 4;
                 if(byteFuerIfdContent > 4)
                 {
@@ -67,7 +68,7 @@ namespace PixelShiftBatchProcessor
 
                 for (var j = 0; j < anzahlElemente; j++)
                 {
-                    var content = GetContent(span.Slice((int)currentOffset + (int)offset, sprungweite), feldtyp, m_IsLittleEndian);
+                    var content = GetContent(span.Slice((int)offset, sprungweite), feldtyp, m_IsLittleEndian);
 
                     var ifd = m_IsLittleEndian ? new IFd()
                     {
