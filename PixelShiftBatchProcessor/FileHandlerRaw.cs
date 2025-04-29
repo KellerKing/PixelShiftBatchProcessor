@@ -1,4 +1,5 @@
 ﻿using PixelShiftBatchProcessor.NewFolder;
+using PixelShiftBatchProcessor.Tiff.Header;
 using System.Buffers.Binary;
 using System.Text;
 
@@ -29,20 +30,13 @@ namespace PixelShiftBatchProcessor
             var testresult = new List<IFd>();
             var bytes = File.ReadAllBytes(m_Fielpath);
             var span = bytes.AsSpan();
-            //var str = System.Text.Encoding.Default.GetString(bytes);
-            //File.WriteAllText(Path.Combine(Directory.GetCurrentDirectory(), "res.txt"), str);
 
-            m_IsLittleEndian = Encodings.IsLittleEndian(BitConverter.ToString(bytes, 0, 2));
-            m_IsTiff = Encodings.IsTiff(BitConverter.ToString(bytes, 2, 2), m_IsLittleEndian);
+            var header = HeaderParserTiff.ParseHeader(span.Slice(0, 8));
 
-            var offsetIfd0Span = span.Slice(4, 4);
+            m_IsLittleEndian = header.IsLittleEndian;
+            m_IsTiff = header.IsTiff;
+            var offsetIfd0InByte = header.ByteOffset;
 
-            if (!m_IsLittleEndian)
-            {
-                offsetIfd0Span.Reverse();
-            }
-
-            var offsetIfd0InByte = BitConverter.ToUInt32(offsetIfd0Span);
             var anzahlIfd = BitConverter.ToUInt16(span.Slice((int)offsetIfd0InByte, 2));
 
             var currentOffset = offsetIfd0InByte + 2;

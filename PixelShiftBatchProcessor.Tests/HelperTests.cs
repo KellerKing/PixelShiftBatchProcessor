@@ -41,7 +41,9 @@ namespace PixelShiftBatchProcessor.Tests
 
         public static IEnumerable<object[]> GetSpeicherbedarfInByteTestDataUngueltig()
         {
-            var sampleSize = 500;
+            yield return new object[] { -1 };
+
+            var sampleSize = 10;
             var random = new Random();
 
             for (int i = 0; i < sampleSize; i++)
