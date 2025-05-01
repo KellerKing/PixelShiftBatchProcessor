@@ -60,20 +60,40 @@ namespace PixelShiftBatchProcessor
                     sprungweite = byteProElement;
                 }
 
+                if (feldtyp == Feldtyp.ASCII)
+                {
+                    var asciiContent = new StringBuilder();
+
+                    for (var j = 0; j < anzahlElemente; j++)
+                    {
+                        var content = GetContent(span.Slice((int)offset, sprungweite), feldtyp, m_IsLittleEndian);
+                        asciiContent.Append(content);
+
+                        if (byteFuerIfdContent > 4)
+                            offset += byteProElement;
+                    }
+
+                    var ifd = new IFd()
+                    {
+                        Kennzeichnungsnummer = kennzeichnungsnummer,
+                        Feldtyp = feldtyp,
+                        Content = asciiContent.ToString(),
+                    };
+
+                    testresult.Add(ifd);
+                    currentOffset += 12;
+                    continue;
+                }
+
                 for (var j = 0; j < anzahlElemente; j++)
                 {
                     var content = GetContent(span.Slice((int)offset, sprungweite), feldtyp, m_IsLittleEndian);
 
-                    var ifd = m_IsLittleEndian ? new IFd()
+                    var ifd = new IFd()
                     {
                         Kennzeichnungsnummer = kennzeichnungsnummer,
                         Feldtyp = feldtyp,
                         Content = content,
-                    } :
-                    new IFd()
-                    {
-                        Kennzeichnungsnummer = kennzeichnungsnummer,
-                        Feldtyp = feldtyp,
                     };
                     testresult.Add(ifd);
 
