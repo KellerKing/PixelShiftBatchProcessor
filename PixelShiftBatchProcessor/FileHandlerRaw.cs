@@ -1,6 +1,10 @@
 ﻿using PixelShiftBatchProcessor.NewFolder;
 using PixelShiftBatchProcessor.Tiff.Header;
+using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection.Metadata;
 using System.Text;
 
 namespace PixelShiftBatchProcessor
@@ -36,75 +40,96 @@ namespace PixelShiftBatchProcessor
             m_IsLittleEndian = header.IsLittleEndian;
             m_IsTiff = header.IsTiff;
             var offsetIfd0InByte = header.ByteOffset;
+            var offsetCurrentIfd = offsetIfd0InByte;
+            var hasNextIfd = false;
 
-            var anzahlIfd = BitConverter.ToUInt16(span.Slice((int)offsetIfd0InByte, 2));
-
-            var currentOffset = offsetIfd0InByte + 2;
-            for (var i = 0; i < anzahlIfd; i++)
+            do
             {
-                var ifdSpan = span.Slice((int)currentOffset, 12);
+                var anzahlEntriesInIfd = BitConverter.ToUInt16(span.Slice((int)offsetCurrentIfd, 2));
+                var currentOffset = offsetCurrentIfd + 2;
 
-                var kennzeichnungsnummer = m_IsLittleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(0, 2)) : BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(0, 2));
-                var feldtyp = m_IsLittleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(2, 2)) : BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(2, 2));
-
-                var anzahlElemente = m_IsLittleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(ifdSpan.Slice(4, 4)) : BinaryPrimitives.ReadUInt32BigEndian(ifdSpan.Slice(4, 4));
-
-                var byteProElement = Helper.GetSpeicherbedarfInByte(feldtyp);
-                var byteFuerIfdContent = byteProElement * anzahlElemente;
-
-                var offset = currentOffset  + 8;
-                var sprungweite = 4;
-                if(byteFuerIfdContent > 4)
+                for (var i = 0; i < anzahlEntriesInIfd; i++)
                 {
-                    offset = m_IsLittleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(ifdSpan.Slice(8, 4)) : BinaryPrimitives.ReadUInt32BigEndian(ifdSpan.Slice(8, 4));
-                    sprungweite = byteProElement;
-                }
+                    var ifdSpan = span.Slice((int)currentOffset, 12);
 
-                if (feldtyp == Feldtyp.ASCII)
-                {
-                    var asciiContent = new StringBuilder();
+                    var kennzeichnungsnummer = m_IsLittleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(0, 2)) : BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(0, 2));
+                    var feldtyp = m_IsLittleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(ifdSpan.Slice(2, 2)) : BinaryPrimitives.ReadUInt16BigEndian(ifdSpan.Slice(2, 2));
 
-                    for (var j = 0; j < anzahlElemente; j++)
+                    var anzahlElemente = m_IsLittleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(ifdSpan.Slice(4, 4)) : BinaryPrimitives.ReadUInt32BigEndian(ifdSpan.Slice(4, 4));
+
+                    var byteProElement = Helper.GetSpeicherbedarfInByte(feldtyp);
+                    var byteFuerIfdContent = byteProElement * anzahlElemente;
+
+                    var offset = currentOffset + 8;
+                    var sprungweite = 4;
+                    if (byteFuerIfdContent > 4)
                     {
-                        var content = GetContent(span.Slice((int)offset, sprungweite), feldtyp, m_IsLittleEndian);
-                        asciiContent.Append(content);
-
-                        if (byteFuerIfdContent > 4)
-                            offset += byteProElement;
+                        offset = m_IsLittleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(ifdSpan.Slice(8, 4)) : BinaryPrimitives.ReadUInt32BigEndian(ifdSpan.Slice(8, 4));
+                        sprungweite = byteProElement;
                     }
 
-                    var ifd = new IFd()
+                    if (feldtyp == Feldtyp.ASCII)
                     {
-                        Kennzeichnungsnummer = kennzeichnungsnummer,
-                        Feldtyp = feldtyp,
-                        Content = asciiContent.ToString(),
-                    };
+                        var asciiContent = new StringBuilder();
 
-                    testresult.Add(ifd);
+                        for (var j = 0; j < anzahlElemente; j++)
+                        {
+                            var content = GetContent(span.Slice((int)offset, sprungweite), feldtyp, m_IsLittleEndian);
+                            asciiContent.Append(content);
+
+                            if (byteFuerIfdContent > 4)
+                                offset += byteProElement;
+                        }
+
+                        var ifd = new IFd()
+                        {
+                            Kennzeichnungsnummer = kennzeichnungsnummer,
+                            Feldtyp = feldtyp,
+                            Content = asciiContent.ToString(),
+                            IndexIfd = currentOffset
+                        };
+
+                        testresult.Add(ifd);
+                    }
+                    else
+                    {
+                        var contentList = new List<object>();
+                        for (var j = 0; j < anzahlElemente; j++)
+                        {
+                            var content = GetContent(span.Slice((int)offset, sprungweite), feldtyp, m_IsLittleEndian);
+                            contentList.Add(content);
+
+                            if (byteFuerIfdContent > 4)
+                                offset += byteProElement;
+                        }
+
+                        var ifd = new IFd()
+                        {
+                            Kennzeichnungsnummer = kennzeichnungsnummer,
+                            Feldtyp = feldtyp,
+                            Content = contentList,
+                            IndexIfd = currentOffset
+                        };
+                        testresult.Add(ifd);
+
+                    }
+
                     currentOffset += 12;
-                    continue;
                 }
+                var byteWoOffsetNaechsteIfdAusgelesenWird = currentOffset; //OffsetNextifdStart(offsetCurrentIfd, anzahlEntriesInIfd);
+                offsetCurrentIfd = Convert.ToUInt32(GetContent(span.Slice((int)byteWoOffsetNaechsteIfdAusgelesenWird, 4), Feldtyp.LONG, m_IsLittleEndian));
+                hasNextIfd = offsetCurrentIfd > 0;
 
-                for (var j = 0; j < anzahlElemente; j++)
-                {
-                    var content = GetContent(span.Slice((int)offset, sprungweite), feldtyp, m_IsLittleEndian);
-
-                    var ifd = new IFd()
-                    {
-                        Kennzeichnungsnummer = kennzeichnungsnummer,
-                        Feldtyp = feldtyp,
-                        Content = content,
-                    };
-                    testresult.Add(ifd);
-
-                    if (byteFuerIfdContent > 4)
-                        offset += byteProElement;
-                }
-
-                currentOffset += 12;
-            }
+            } while (hasNextIfd);
+            
 
             //BinaryPrimitives --> https://learn.microsoft.com/de-de/dotnet/api/system.buffers.binary.binaryprimitives?view=net-7.0 --> Bessere Klasse als BitConverter.
+        }
+
+        private static uint OffsetNextifdStart(uint offsetCurrentIfd, ushort anzahlEintraegeInCurrentIfd)
+        {
+            var groesseCurrentOffset = anzahlEintraegeInCurrentIfd * 12;
+            return (uint)(offsetCurrentIfd + 2 + groesseCurrentOffset);
         }
 
         private static object GetContent(Span<byte> content, ushort feldtyp, bool isLittleEndian) //https://www.loc.gov/preservation/digital/formats/content/tiff_tags.shtml
@@ -178,6 +203,7 @@ namespace PixelShiftBatchProcessor
         public int Kennzeichnungsnummer { get; set; }
         public ushort Feldtyp { get; set; }
         public object Content { get; set; }
+        public uint IndexIfd { get; set; }
 
         public string KennzeichnungHex
         {
@@ -218,6 +244,20 @@ namespace PixelShiftBatchProcessor
                     282 => "XResolution",
                     283 => "YResolution",
                     284 => "PlanarConfiguration",
+                    296 => "ResolutionUnit",
+                    305 => "Software",
+                    306 => "DateTime",
+                    315 => "Artist",
+                    330 => "SubIFDs",
+                    513 => "JPEGInterchangeFormat",
+                    514 => "JPEGInterchangeFormatLength",
+                    531 => "YCbCrPositioning",
+                    700 => "XMP",
+                    33432 => "Copyright",
+                    34665 => "Exif IFD",
+                    34853 => "GPSInfo",
+                    50341 => "PrintImageMatching",
+                    50740 => "DNGPrivateData",
                     _ => string.Empty
                 };
             }

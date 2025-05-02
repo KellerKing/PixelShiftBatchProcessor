@@ -1,4 +1,7 @@
-﻿namespace PixelShiftBatchProcessor
+﻿using System;
+using System.IO;
+
+namespace PixelShiftBatchProcessor
 {
     public class Programm
     {
