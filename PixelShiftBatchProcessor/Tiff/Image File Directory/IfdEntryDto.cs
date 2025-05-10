@@ -1,9 +1,8 @@
-﻿using System;
-
-namespace PixelShiftBatchProcessor.Tiff.Image_File_Directory
+﻿namespace PixelShiftBatchProcessor.Tiff.Image_File_Directory
 {
     internal class IfdEntryDto
     {
+
         public ushort TagDezimal { get; init; }
         public ushort Feldtyp { get; init; }
         
